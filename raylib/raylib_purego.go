@@ -91,8 +91,8 @@ var beginVrStereoMode func(config uintptr)
 var endVrStereoMode func()
 var loadVrStereoConfig func(config uintptr, device uintptr)
 var unloadVrStereoConfig func(config uintptr)
-var loadShader func(shader uintptr, vsFileName string, fsFileName string)
-var loadShaderFromMemory func(shader uintptr, vsCode string, fsCode string)
+var loadShader func(shader uintptr, csFileName string, esFileName string, vsFileName string, gsFileName string, fsFileName string)
+var loadShaderFromMemory func(shader uintptr, csCode string, esCode string, vsCode string, gsCode string, fsCode string)
 var isShaderReady func(shader uintptr) bool
 var getShaderLocation func(shader uintptr, uniformName string) int32
 var getShaderLocationAttrib func(shader uintptr, attribName string) int32
@@ -1375,16 +1375,16 @@ func UnloadVrStereoConfig(config VrStereoConfig) {
 }
 
 // LoadShader - Load shader from files and bind default locations
-func LoadShader(vsFileName string, fsFileName string) Shader {
+func LoadShader(vsFileName string, csFileName string, esFileName string, gsFileName string, fsFileName string) Shader {
 	var shader Shader
-	loadShader(uintptr(unsafe.Pointer(&shader)), vsFileName, fsFileName)
+	loadShader(uintptr(unsafe.Pointer(&shader)), vsFileName, csFileName, esFileName, gsFileName, fsFileName)
 	return shader
 }
 
 // LoadShaderFromMemory - Load shader from code strings and bind default locations
-func LoadShaderFromMemory(vsCode string, fsCode string) Shader {
+func LoadShaderFromMemory(vsCode string, csCode string, esCode string, gsCode string, fsCode string) Shader {
 	var shader Shader
-	loadShaderFromMemory(uintptr(unsafe.Pointer(&shader)), vsCode, fsCode)
+	loadShaderFromMemory(uintptr(unsafe.Pointer(&shader)), vsCode, csCode, esCode, gsCode, fsCode)
 	return shader
 }
 
