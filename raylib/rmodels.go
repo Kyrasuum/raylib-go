@@ -549,11 +549,13 @@ func GenMeshCubicmap(cubicmap Image, size Vector3) Mesh {
 }
 
 // LoadMaterials - Load material data (.MTL)
-func LoadMaterials(fileName string) []Material {
+func LoadMaterials(fileName string, fileDir string) []Material {
 	cfileName := C.CString(fileName)
 	defer C.free(unsafe.Pointer(cfileName))
+	cFileDir := C.CString(fileDir)
+	defer C.free(unsafe.Pointer(cFileDir))
 	ccount := C.int(0)
-	ret := C.LoadMaterials(cfileName, &ccount)
+	ret := C.LoadMaterials(cfileName, cFileDir, &ccount)
 	v := (*[1 << 24]Material)(unsafe.Pointer(ret))[:int(ccount)]
 	return v
 }

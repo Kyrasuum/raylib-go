@@ -41,3 +41,19 @@ func HomeDir() string {
 	}
 	return ""
 }
+
+func SetLoadFileDataCallback(hook C.LoadFileDataCallback) {
+	C.SetLoadFileDataCallback(hook)
+}
+
+func SetLoadFileTextCallback(hook C.LoadFileTextCallback) {
+	C.SetLoadFileTextCallback(hook)
+}
+
+func SetSaveFileDataCallback(hook C.SaveFileDataCallback) {
+	C.SetSaveFileDataCallback(hook)
+}
+
+func SetSaveFileTextCallback(hook C.SaveFileTextCallback) {
+	C.SetSaveFileTextCallback(hook)
+}

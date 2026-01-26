@@ -449,7 +449,7 @@ var genMeshTorus func(mesh uintptr, radius float32, size float32, radSeg int32, 
 var genMeshKnot func(mesh uintptr, radius float32, size float32, radSeg int32, sides int32)
 var genMeshHeightmap func(mesh uintptr, heightmap uintptr, size uintptr)
 var genMeshCubicmap func(mesh uintptr, cubicmap uintptr, cubeSize uintptr)
-var loadMaterials func(fileName string, materialCount *int32) *Material
+var loadMaterials func(fileName string, fileDir string, materialCount *int32) *Material
 var loadMaterialDefault func(material uintptr)
 var isMaterialValid func(material uintptr) bool
 var unloadMaterial func(material uintptr)
@@ -3525,9 +3525,9 @@ func GenMeshCubicmap(cubicmap Image, cubeSize Vector3) Mesh {
 }
 
 // LoadMaterials - Load materials from model file
-func LoadMaterials(fileName string) []Material {
+func LoadMaterials(fileName string, fileDir string) []Material {
 	var materialCount int32
-	ret := loadMaterials(fileName, &materialCount)
+	ret := loadMaterials(fileName, fileDir, &materialCount)
 	return unsafe.Slice(ret, materialCount)
 }
 

@@ -63,8 +63,33 @@
     #define TINYOBJ_CALLOC RL_CALLOC
     #define TINYOBJ_REALLOC RL_REALLOC
     #define TINYOBJ_FREE RL_FREE
-
     #define TINYOBJ_LOADER_C_IMPLEMENTATION
+    
+    static char* tinyobj_read_wrap(const char *filename, const char *directory) {
+      // Build "directory/filename" if directory is provided and filename looks relative.
+      // If you *know* filename is already full path, you can simplify this.
+      char path_buf[4096];
+      const char *path = filename;
+    
+      if (directory && directory[0]) {
+        // crude "is relative" check: no leading '/' or '\' and no drive letter "C:"
+        int is_abs =
+          (filename[0] == '/' || filename[0] == '\\' ||
+           (strlen(filename) >= 2 && filename[1] == ':'));
+    
+        if (!is_abs) {
+          // Ensure single path separator
+          size_t dlen = strlen(directory);
+          int need_sep = !(directory[dlen - 1] == '/' || directory[dlen - 1] == '\\');
+          snprintf(path_buf, sizeof(path_buf), "%s%s%s", directory, need_sep ? "/" : "", filename);
+          path = path_buf;
+        }
+      }
+      
+      return LoadFileText(path);
+    }
+    #define TINYOBJ_READ(T, N) tinyobj_read_wrap(T, N)
+
     #include "external/tinyobj_loader_c.h"      // OBJ/MTL file formats loading
 #endif
 
@@ -2175,7 +2200,7 @@ static void ProcessMaterialsOBJ(Material *materials, tinyobj_material_t *mats, i
 #endif
 
 // Load materials from model file
-Material *LoadMaterials(const char *fileName, int *materialCount)
+Material *LoadMaterials(const char *fileName, const char *fileDir, int *materialCount)
 {
     Material *materials = NULL;
     unsigned int count = 0;
@@ -2187,7 +2212,7 @@ Material *LoadMaterials(const char *fileName, int *materialCount)
     {
         tinyobj_material_t *mats = NULL;
 
-        int result = tinyobj_parse_mtl_file(&mats, &count, fileName);
+        int result = tinyobj_parse_mtl_file(&mats, &count, fileName, fileDir);
         if (result != TINYOBJ_SUCCESS) TRACELOG(LOG_WARNING, "MATERIAL: [%s] Failed to parse materials file", fileName);
 
         materials = (Material *)RL_MALLOC(count*sizeof(Material));
@@ -4325,7 +4350,7 @@ static Model LoadOBJ(const char *fileName)
     unsigned int dataSize = (unsigned int)strlen(fileText);
 
     unsigned int flags = TINYOBJ_FLAG_TRIANGULATE;
-    int ret = tinyobj_parse_obj(&objAttributes, &objShapes, &objShapeCount, &objMaterials, &objMaterialCount, fileText, dataSize, flags);
+    int ret = tinyobj_parse_obj(&objAttributes, &objShapes, &objShapeCount, &objMaterials, &objMaterialCount, fileText, dataSize, flags, workingDir);
 
     if (ret != TINYOBJ_SUCCESS)
     {

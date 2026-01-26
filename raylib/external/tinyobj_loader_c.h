@@ -95,10 +95,11 @@ typedef struct {
 extern int tinyobj_parse_obj(tinyobj_attrib_t *attrib, tinyobj_shape_t **shapes,
                              unsigned int *num_shapes, tinyobj_material_t **materials,
                              unsigned int *num_materials, const char *buf, unsigned int len,
-                             unsigned int flags);
+                             unsigned int flags, const char *directory);
 extern int tinyobj_parse_mtl_file(tinyobj_material_t **materials_out,
                                   unsigned int *num_materials_out,
-                                  const char *filename);
+                                  const char *filename,
+                                  const char *directory);
 
 extern void tinyobj_attrib_init(tinyobj_attrib_t *attrib);
 extern void tinyobj_attrib_free(tinyobj_attrib_t *attrib);
@@ -133,6 +134,7 @@ extern void tinyobj_materials_free(tinyobj_material_t *materials,
 #define IS_SPACE(x) (((x) == ' ') || ((x) == '\t'))
 #define IS_DIGIT(x) ((unsigned int)((x) - '0') < (unsigned int)(10))
 #define IS_NEW_LINE(x) (((x) == '\r') || ((x) == '\n') || ((x) == '\0'))
+
 
 static void skip_space(const char **token) {
   while ((*token)[0] == ' ' || (*token)[0] == '\t') {
@@ -722,9 +724,105 @@ static tinyobj_material_t *tinyobj_material_add(tinyobj_material_t *prev,
   return dst;
 }
 
+// Like fgets but reading from a memory range [*src, src_end).
+// - *buf is grown as needed
+// - returns *buf on success, NULL when no more data
+static char *dynamic_sgets_bounded(char **buf,
+                                  unsigned int *size,
+                                  char **src,
+                                  const char *src_end) {
+  if (!buf || !*buf || !size || !src || !*src) return NULL;
+  if (*src >= src_end) return NULL;
+
+  // Ensure we have at least 2 bytes to write something + NUL.
+  if (*size < 2) {
+    unsigned int ns = 2;
+    char *tmp = (char*)TINYOBJ_REALLOC(*buf, ns);
+    if (!tmp) return NULL;
+    *buf = tmp;
+    *size = ns;
+  }
+
+  unsigned int used = 0;
+  (*buf)[0] = '\0';
+
+  while (*src < src_end) {
+    // Ensure space for at least 1 more char + NUL.
+    if (used + 2 > *size) {
+      unsigned int old = *size;
+      unsigned int ns = old * 2;
+      if (ns < old) return NULL; // overflow guard
+      char *tmp = (char*)TINYOBJ_REALLOC(*buf, ns);
+      if (!tmp) return NULL;
+      *buf = tmp;
+      *size = ns;
+    }
+
+    char c = **src;
+    (*buf)[used++] = c;
+    (*buf)[used] = '\0';
+    (*src)++;
+
+    if (c == '\n') {
+      return *buf; // include newline, like fgets
+    }
+  }
+
+  // Hit src_end without newline. If we wrote anything, return it.
+  return (used > 0) ? *buf : NULL;
+}
+
+
+static char* tinyobj_read_file_to_cstr(const char *filename, const char *directory) {
+  // Build "directory/filename" if directory is provided and filename looks relative.
+  // If you *know* filename is already full path, you can simplify this.
+  char path_buf[4096];
+  const char *path = filename;
+
+  if (directory && directory[0]) {
+    // crude "is relative" check: no leading '/' or '\' and no drive letter "C:"
+    int is_abs =
+      (filename[0] == '/' || filename[0] == '\\' ||
+       (strlen(filename) >= 2 && filename[1] == ':'));
+
+    if (!is_abs) {
+      // Ensure single path separator
+      size_t dlen = strlen(directory);
+      int need_sep = !(directory[dlen - 1] == '/' || directory[dlen - 1] == '\\');
+      snprintf(path_buf, sizeof(path_buf), "%s%s%s", directory, need_sep ? "/" : "", filename);
+      path = path_buf;
+    }
+  }
+
+  FILE *fp = fopen(path, "rb"); // use "rb" to avoid ftell/text-mode weirdness
+  if (!fp) return NULL;
+
+  if (fseek(fp, 0, SEEK_END) != 0) { fclose(fp); return NULL; }
+  long sz = ftell(fp);
+  if (sz < 0) { fclose(fp); return NULL; }
+  if (fseek(fp, 0, SEEK_SET) != 0) { fclose(fp); return NULL; }
+
+  char *buf = (char*)TINYOBJ_MALLOC((size_t)sz + 1);
+  if (!buf) { fclose(fp); errno = ENOMEM; return NULL; }
+
+  size_t nread = fread(buf, 1, (size_t)sz, fp);
+  fclose(fp);
+
+  buf[nread] = '\0';
+  return buf;
+}
+
+typedef char* (*tinyobj_ReadDataFn)(const char *filename, const char *directory);
+
+#if defined(TINYOBJ_READ)
+#elif
+#define TINYOBJ_READ(T, N) tinyobj_read_file_to_cstr(T, N)
+#endif
+
 static int tinyobj_parse_and_index_mtl_file(tinyobj_material_t **materials_out,
                                             unsigned int *num_materials_out,
                                             const char *filename,
+                                            const char *directory,
                                             hash_table_t* material_table) {
   tinyobj_material_t material;
   unsigned int buffer_size = 128;
@@ -746,17 +844,21 @@ static int tinyobj_parse_and_index_mtl_file(tinyobj_material_t **materials_out,
   (*materials_out) = NULL;
   (*num_materials_out) = 0;
 
-  fp = fopen(filename, "rt");
-  if (!fp) {
-    fprintf(stderr, "TINYOBJ: Error reading file '%s': %s (%d)\n", filename, strerror(errno), errno);
+  char *content = TINYOBJ_READ(filename, directory);
+  if (!content) {
+    fprintf(stderr, "TINYOBJ: Error reading file '%s': %s (%d)\n",
+            filename, strerror(errno), errno);
     return TINYOBJ_ERROR_FILE_OPERATION;
   }
+  size_t content_len = strlen(content);     // OK since ReadData NUL-terminates
+  char *cursor = content;                   // cursor advances; keep content for free()
+  const char *end = content + content_len;  // exclude the NUL
 
   /* Create a default material */
   initMaterial(&material);
 
   linebuf = (char*)TINYOBJ_MALLOC(buffer_size);
-  while (NULL != dynamic_fgets(&linebuf, &buffer_size, fp)) {
+  while (NULL != dynamic_sgets_bounded(&linebuf, &buffer_size, &cursor, end)) {
     const char *token = linebuf;
 
     line_end = token + strlen(token);
@@ -948,8 +1050,6 @@ static int tinyobj_parse_and_index_mtl_file(tinyobj_material_t **materials_out,
     /* @todo { unknown parameter } */
   }
 
-  fclose(fp);
-
   if (material.name) {
     /* Flush last material element */
     materials = tinyobj_material_add(materials, num_materials, &material);
@@ -962,14 +1062,18 @@ static int tinyobj_parse_and_index_mtl_file(tinyobj_material_t **materials_out,
   if (linebuf) {
     TINYOBJ_FREE(linebuf);
   }
+  if (content) {
+    TINYOBJ_FREE(content);
+  }
 
   return TINYOBJ_SUCCESS;
 }
 
 int tinyobj_parse_mtl_file(tinyobj_material_t **materials_out,
                            unsigned int *num_materials_out,
-                           const char *filename) {
-  return tinyobj_parse_and_index_mtl_file(materials_out, num_materials_out, filename, NULL);
+                           const char *filename,
+                           const char *directory) {
+  return tinyobj_parse_and_index_mtl_file(materials_out, num_materials_out, filename, directory, NULL);
 } 
 
 
@@ -1210,7 +1314,7 @@ static int is_line_ending(const char *p, unsigned int i, unsigned int end_i) {
 int tinyobj_parse_obj(tinyobj_attrib_t *attrib, tinyobj_shape_t **shapes,
                       unsigned int *num_shapes, tinyobj_material_t **materials_out,
                       unsigned int *num_materials_out, const char *buf, unsigned int len,
-                      unsigned int flags) {
+                      unsigned int flags, const char *directory) {
   LineInfo *line_infos = NULL;
   Command *commands = NULL;
   unsigned int num_lines = 0;
@@ -1324,7 +1428,7 @@ int tinyobj_parse_obj(tinyobj_attrib_t *attrib, tinyobj_shape_t **shapes,
     char *filename = my_strndup(commands[mtllib_line_index].mtllib_name,
                                 commands[mtllib_line_index].mtllib_name_len);
 
-    int ret = tinyobj_parse_and_index_mtl_file(&materials, &num_materials, filename, &material_table);
+    int ret = tinyobj_parse_and_index_mtl_file(&materials, &num_materials, filename, directory, &material_table);
 
     if (ret != TINYOBJ_SUCCESS) {
       /* warning. */
