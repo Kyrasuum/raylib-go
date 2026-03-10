@@ -411,6 +411,15 @@ func DrawMeshInstanced(mesh Mesh, material Material, transforms []Matrix, instan
 	C.DrawMeshInstanced(*mesh.cptr(), *material.cptr(), transforms[0].cptr(), C.int(instances))
 }
 
+// MergeMesh - merges the memory for two mesh objects
+func MergeMeshes(a, b Mesh) Mesh {
+	ca := a.cptr()
+	cb := b.cptr()
+	ret := C.MergeMeshes(*ca, *cb)
+	v := newMeshFromPointer(unsafe.Pointer(&ret))
+	return v
+}
+
 // ExportMesh - Export mesh as an OBJ file
 func ExportMesh(mesh Mesh, fileName string) {
 	cfileName := C.CString(fileName)
@@ -437,6 +446,16 @@ func GenMeshPoly(sides int, radius float32) Mesh {
 	return v
 }
 
+// GenMeshPolyData - Generate polygonal mesh data
+func GenMeshPolyData(sides int, radius float32) Mesh {
+	csides := (C.int)(sides)
+	cradius := (C.float)(radius)
+
+	ret := C.GenMeshPolyData(csides, cradius)
+	v := newMeshFromPointer(unsafe.Pointer(&ret))
+	return v
+}
+
 // GenMeshPlane - Generate plane mesh (with subdivisions)
 func GenMeshPlane(width, length float32, resX, resZ int) Mesh {
 	cwidth := (C.float)(width)
@@ -445,6 +464,46 @@ func GenMeshPlane(width, length float32, resX, resZ int) Mesh {
 	cresZ := (C.int)(resZ)
 
 	ret := C.GenMeshPlane(cwidth, clength, cresX, cresZ)
+	v := newMeshFromPointer(unsafe.Pointer(&ret))
+	return v
+}
+
+// GenMeshPlaneData - Generate plane mesh data (with subdivisions)
+func GenMeshPlaneData(width, length float32, resX, resZ int) Mesh {
+	cwidth := (C.float)(width)
+	clength := (C.float)(length)
+	cresX := (C.int)(resX)
+	cresZ := (C.int)(resZ)
+
+	ret := C.GenMeshPlaneData(cwidth, clength, cresX, cresZ)
+	v := newMeshFromPointer(unsafe.Pointer(&ret))
+	return v
+}
+
+// GenMeshPlaneEx - Generate plane mesh (with subdivisions and axis)
+func GenMeshPlaneEx(origin, axisU, axisV Vector3, resU, resV int) Mesh {
+	cresU := (C.int)(resU)
+	cresV := (C.int)(resV)
+
+	corigin := origin.cptr()
+	caxisU := axisU.cptr()
+	caxisV := axisV.cptr()
+
+	ret := C.GenMeshPlaneEx(*corigin, *caxisU, *caxisV, cresU, cresV)
+	v := newMeshFromPointer(unsafe.Pointer(&ret))
+	return v
+}
+
+// GenMeshPlaneExData - Generate plane mesh data (with subdivisions and axis)
+func GenMeshPlaneExData(origin, axisU, axisV Vector3, resU, resV int) Mesh {
+	cresU := (C.int)(resU)
+	cresV := (C.int)(resV)
+
+	corigin := origin.cptr()
+	caxisU := axisU.cptr()
+	caxisV := axisV.cptr()
+
+	ret := C.GenMeshPlaneExData(*corigin, *caxisU, *caxisV, cresU, cresV)
 	v := newMeshFromPointer(unsafe.Pointer(&ret))
 	return v
 }
@@ -460,6 +519,17 @@ func GenMeshCube(width, height, length float32) Mesh {
 	return v
 }
 
+// GenMeshCubeData - Generate cuboid mesh data
+func GenMeshCubeData(width, height, length float32) Mesh {
+	cwidth := (C.float)(width)
+	cheight := (C.float)(height)
+	clength := (C.float)(length)
+
+	ret := C.GenMeshCubeData(cwidth, cheight, clength)
+	v := newMeshFromPointer(unsafe.Pointer(&ret))
+	return v
+}
+
 // GenMeshSphere - Generate sphere mesh (standard sphere)
 func GenMeshSphere(radius float32, rings, slices int) Mesh {
 	cradius := (C.float)(radius)
@@ -467,6 +537,17 @@ func GenMeshSphere(radius float32, rings, slices int) Mesh {
 	cslices := (C.int)(slices)
 
 	ret := C.GenMeshSphere(cradius, crings, cslices)
+	v := newMeshFromPointer(unsafe.Pointer(&ret))
+	return v
+}
+
+// GenMeshSphereData - Generate sphere mesh data (standard sphere)
+func GenMeshSphereData(radius float32, rings, slices int) Mesh {
+	cradius := (C.float)(radius)
+	crings := (C.int)(rings)
+	cslices := (C.int)(slices)
+
+	ret := C.GenMeshSphereData(cradius, crings, cslices)
 	v := newMeshFromPointer(unsafe.Pointer(&ret))
 	return v
 }
@@ -482,6 +563,17 @@ func GenMeshHemiSphere(radius float32, rings, slices int) Mesh {
 	return v
 }
 
+// GenMeshHemiSphereData - Generate half-sphere mesh data (no bottom cap)
+func GenMeshHemiSphereData(radius float32, rings, slices int) Mesh {
+	cradius := (C.float)(radius)
+	crings := (C.int)(rings)
+	cslices := (C.int)(slices)
+
+	ret := C.GenMeshHemiSphereData(cradius, crings, cslices)
+	v := newMeshFromPointer(unsafe.Pointer(&ret))
+	return v
+}
+
 // GenMeshCylinder - Generate cylinder mesh
 func GenMeshCylinder(radius, height float32, slices int) Mesh {
 	cradius := (C.float)(radius)
@@ -493,6 +585,17 @@ func GenMeshCylinder(radius, height float32, slices int) Mesh {
 	return v
 }
 
+// GenMeshCylinderData - Generate cylinder mesh data
+func GenMeshCylinderData(radius, height float32, slices int) Mesh {
+	cradius := (C.float)(radius)
+	cheight := (C.float)(height)
+	cslices := (C.int)(slices)
+
+	ret := C.GenMeshCylinderData(cradius, cheight, cslices)
+	v := newMeshFromPointer(unsafe.Pointer(&ret))
+	return v
+}
+
 // GenMeshCone - Generate cone/pyramid mesh
 func GenMeshCone(radius, height float32, slices int) Mesh {
 	cradius := (C.float)(radius)
@@ -500,6 +603,17 @@ func GenMeshCone(radius, height float32, slices int) Mesh {
 	cslices := (C.int)(slices)
 
 	ret := C.GenMeshCone(cradius, cheight, cslices)
+	v := newMeshFromPointer(unsafe.Pointer(&ret))
+	return v
+}
+
+// GenMeshConeData - Generate cone/pyramid mesh data
+func GenMeshConeData(radius, height float32, slices int) Mesh {
+	cradius := (C.float)(radius)
+	cheight := (C.float)(height)
+	cslices := (C.int)(slices)
+
+	ret := C.GenMeshConeData(cradius, cheight, cslices)
 	v := newMeshFromPointer(unsafe.Pointer(&ret))
 	return v
 }
@@ -516,6 +630,18 @@ func GenMeshTorus(radius, size float32, radSeg, sides int) Mesh {
 	return v
 }
 
+// GenMeshTorusData - Generate torus mesh data
+func GenMeshTorusData(radius, size float32, radSeg, sides int) Mesh {
+	cradius := (C.float)(radius)
+	csize := (C.float)(size)
+	cradSeg := (C.int)(radSeg)
+	csides := (C.int)(sides)
+
+	ret := C.GenMeshTorusData(cradius, csize, cradSeg, csides)
+	v := newMeshFromPointer(unsafe.Pointer(&ret))
+	return v
+}
+
 // GenMeshKnot - Generate trefoil knot mesh
 func GenMeshKnot(radius, size float32, radSeg, sides int) Mesh {
 	cradius := (C.float)(radius)
@@ -524,6 +650,18 @@ func GenMeshKnot(radius, size float32, radSeg, sides int) Mesh {
 	csides := (C.int)(sides)
 
 	ret := C.GenMeshKnot(cradius, csize, cradSeg, csides)
+	v := newMeshFromPointer(unsafe.Pointer(&ret))
+	return v
+}
+
+// GenMeshKnotData - Generate trefoil knot mesh data
+func GenMeshKnotData(radius, size float32, radSeg, sides int) Mesh {
+	cradius := (C.float)(radius)
+	csize := (C.float)(size)
+	cradSeg := (C.int)(radSeg)
+	csides := (C.int)(sides)
+
+	ret := C.GenMeshKnotData(cradius, csize, cradSeg, csides)
 	v := newMeshFromPointer(unsafe.Pointer(&ret))
 	return v
 }
@@ -538,12 +676,32 @@ func GenMeshHeightmap(heightmap Image, size Vector3) Mesh {
 	return v
 }
 
+// GenMeshHeightmapData - Generate heightmap mesh data from image data
+func GenMeshHeightmapData(heightmap Image, size Vector3) Mesh {
+	cheightmap := heightmap.cptr()
+	csize := size.cptr()
+
+	ret := C.GenMeshHeightmapData(*cheightmap, *csize)
+	v := newMeshFromPointer(unsafe.Pointer(&ret))
+	return v
+}
+
 // GenMeshCubicmap - Generate cubes-based map mesh from image data
 func GenMeshCubicmap(cubicmap Image, size Vector3) Mesh {
 	ccubicmap := cubicmap.cptr()
 	csize := size.cptr()
 
 	ret := C.GenMeshCubicmap(*ccubicmap, *csize)
+	v := newMeshFromPointer(unsafe.Pointer(&ret))
+	return v
+}
+
+// GenMeshCubicmapData - Generate cubes-based map mesh data from image data
+func GenMeshCubicmapData(cubicmap Image, size Vector3) Mesh {
+	ccubicmap := cubicmap.cptr()
+	csize := size.cptr()
+
+	ret := C.GenMeshCubicmapData(*ccubicmap, *csize)
 	v := newMeshFromPointer(unsafe.Pointer(&ret))
 	return v
 }

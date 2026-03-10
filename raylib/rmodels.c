@@ -1963,6 +1963,47 @@ void DrawMeshInstanced(Mesh mesh, Material material, const Matrix *transforms, i
 #endif
 }
 
+// Merge mesh data together
+Mesh MergeMeshes(Mesh a, Mesh b)
+{
+    Mesh merged = { 0 };
+
+    merged.vertexCount = a.vertexCount + b.vertexCount;
+    merged.triangleCount = a.triangleCount + b.triangleCount;
+
+    merged.vertices = (float *)RL_MALLOC(merged.vertexCount * 3 * sizeof(float));
+    merged.texcoords = (float *)RL_MALLOC(merged.vertexCount * 2 * sizeof(float));
+    merged.normals = (float *)RL_MALLOC(merged.vertexCount * 3 * sizeof(float));
+    merged.indices = (unsigned short *)RL_MALLOC(merged.triangleCount * 3 * sizeof(unsigned short));
+
+    // Copy vertices
+    memcpy(merged.vertices, a.vertices, a.vertexCount * 3 * sizeof(float));
+    memcpy(merged.vertices + a.vertexCount * 3, b.vertices, b.vertexCount * 3 * sizeof(float));
+
+    // Copy texcoords
+    memcpy(merged.texcoords, a.texcoords, a.vertexCount * 2 * sizeof(float));
+    memcpy(merged.texcoords + a.vertexCount * 2, b.texcoords, b.vertexCount * 2 * sizeof(float));
+
+    // Copy normals
+    memcpy(merged.normals, a.normals, a.vertexCount * 3 * sizeof(float));
+    memcpy(merged.normals + a.vertexCount * 3, b.normals, b.vertexCount * 3 * sizeof(float));
+
+    // Copy indices from A
+    int aIndexCount = a.triangleCount * 3;
+    int bIndexCount = b.triangleCount * 3;
+
+    memcpy(merged.indices, a.indices, aIndexCount * sizeof(unsigned short));
+
+    // Copy indices from B with vertex offset
+    unsigned short vertexOffset = (unsigned short)a.vertexCount;
+    for (int i = 0; i < bIndexCount; i++)
+    {
+        merged.indices[aIndexCount + i] = (unsigned short)(b.indices[i] + vertexOffset);
+    }
+
+    return merged;
+}
+
 // Unload mesh from memory (RAM and VRAM)
 void UnloadMesh(Mesh mesh)
 {
@@ -2477,7 +2518,7 @@ bool IsModelAnimationValid(Model model, ModelAnimation anim)
 
 #if defined(SUPPORT_MESH_GENERATION)
 // Generate polygonal mesh
-Mesh GenMeshPoly(int sides, float radius)
+Mesh GenMeshPolyData(int sides, float radius)
 {
     Mesh mesh = { 0 };
 
@@ -2538,6 +2579,12 @@ Mesh GenMeshPoly(int sides, float radius)
     RL_FREE(normals);
     RL_FREE(texcoords);
 
+    return mesh;
+}
+
+Mesh GenMeshPoly(int sides, float radius)
+{
+    Mesh mesh = GenMeshPolyData(sides, radius);
     // Upload vertex data to GPU (static mesh)
     // NOTE: mesh.vboId array is allocated inside UploadMesh()
     UploadMesh(&mesh, false);
@@ -2546,7 +2593,7 @@ Mesh GenMeshPoly(int sides, float radius)
 }
 
 // Generate plane mesh (with subdivisions)
-Mesh GenMeshPlane(float width, float length, int resX, int resZ)
+Mesh GenMeshPlaneData(float width, float length, int resX, int resZ)
 {
     Mesh mesh = { 0 };
 
@@ -2672,14 +2719,116 @@ Mesh GenMeshPlane(float width, float length, int resX, int resZ)
     par_shapes_free_mesh(plane);
 #endif
 
+
+    return mesh;
+}
+
+
+Mesh GenMeshPlane(float width, float length, int resX, int resZ)
+{
+    
+    Mesh mesh = GenMeshPlaneData(width, length, resX, resZ);
     // Upload vertex data to GPU (static mesh)
     UploadMesh(&mesh, false);
 
     return mesh;
 }
 
+Mesh GenMeshPlaneExData(Vector3 origin, Vector3 axisU, Vector3 axisV, int resU, int resV)
+{
+    Mesh mesh = { 0 };
+
+    resU++;
+    resV++;
+
+    int vertexCount = resU * resV;
+    int numFaces = (resU - 1) * (resV - 1);
+
+    Vector3 *vertices = (Vector3 *)RL_MALLOC(vertexCount * sizeof(Vector3));
+    Vector3 *normals = (Vector3 *)RL_MALLOC(vertexCount * sizeof(Vector3));
+    Vector2 *texcoords = (Vector2 *)RL_MALLOC(vertexCount * sizeof(Vector2));
+    int *triangles = (int *)RL_MALLOC(numFaces * 6 * sizeof(int));
+
+    Vector3 normal = Vector3Normalize(Vector3CrossProduct(axisU, axisV));
+
+    for (int v = 0; v < resV; v++)
+    {
+        float fv = (float)v / (float)(resV - 1);
+
+        for (int u = 0; u < resU; u++)
+        {
+            float fu = (float)u / (float)(resU - 1);
+
+            int idx = u + v * resU;
+
+            vertices[idx] = (Vector3){
+                origin.x + axisU.x * fu + axisV.x * fv,
+                origin.y + axisU.y * fu + axisV.y * fv,
+                origin.z + axisU.z * fu + axisV.z * fv
+            };
+
+            normals[idx] = normal;
+            texcoords[idx] = (Vector2){ fu, fv };
+        }
+    }
+
+    int t = 0;
+    for (int face = 0; face < numFaces; face++)
+    {
+        int i = face + face / (resU - 1);
+
+        triangles[t++] = i + resU;
+        triangles[t++] = i + 1;
+        triangles[t++] = i;
+
+        triangles[t++] = i + resU;
+        triangles[t++] = i + resU + 1;
+        triangles[t++] = i + 1;
+    }
+
+    mesh.vertexCount = vertexCount;
+    mesh.triangleCount = numFaces * 2;
+    mesh.vertices = (float *)RL_MALLOC(mesh.vertexCount * 3 * sizeof(float));
+    mesh.texcoords = (float *)RL_MALLOC(mesh.vertexCount * 2 * sizeof(float));
+    mesh.normals = (float *)RL_MALLOC(mesh.vertexCount * 3 * sizeof(float));
+    mesh.indices = (unsigned short *)RL_MALLOC(mesh.triangleCount * 3 * sizeof(unsigned short));
+
+    for (int i = 0; i < mesh.vertexCount; i++)
+    {
+        mesh.vertices[3*i]     = vertices[i].x;
+        mesh.vertices[3*i + 1] = vertices[i].y;
+        mesh.vertices[3*i + 2] = vertices[i].z;
+
+        mesh.texcoords[2*i]     = texcoords[i].x;
+        mesh.texcoords[2*i + 1] = texcoords[i].y;
+
+        mesh.normals[3*i]     = normals[i].x;
+        mesh.normals[3*i + 1] = normals[i].y;
+        mesh.normals[3*i + 2] = normals[i].z;
+    }
+
+    for (int i = 0; i < mesh.triangleCount * 3; i++)
+    {
+        mesh.indices[i] = (unsigned short)triangles[i];
+    }
+
+    RL_FREE(vertices);
+    RL_FREE(normals);
+    RL_FREE(texcoords);
+    RL_FREE(triangles);
+
+    return mesh;
+}
+
+Mesh GenMeshPlaneEx(Vector3 origin, Vector3 axisU, Vector3 axisV, int resU, int resV)
+{
+    Mesh mesh = GenMeshPlaneExData(origin, axisU, axisV, resU, resV);
+    UploadMesh(&mesh, false);
+    return mesh;
+}
+
 // Generated cuboid mesh
-Mesh GenMeshCube(float width, float height, float length)
+Mesh GenMeshCubeData(float width, float height, float length)
 {
     Mesh mesh = { 0 };
 
@@ -2837,14 +2986,19 @@ par_shapes_mesh *par_shapes_create_icosahedron();       // 20 sides polyhedron
     par_shapes_free_mesh(cube);
 #endif
 
+    return mesh;
+}
+
+Mesh GenMeshCube(float width, float height, float length)
+{
+    Mesh mesh = GenMeshCubeData(width, height, length);
     // Upload vertex data to GPU (static mesh)
     UploadMesh(&mesh, false);
-
     return mesh;
 }
 
 // Generate sphere mesh (standard sphere)
-Mesh GenMeshSphere(float radius, int rings, int slices)
+Mesh GenMeshSphereData(float radius, int rings, int slices)
 {
     Mesh mesh = { 0 };
 
@@ -2877,17 +3031,23 @@ Mesh GenMeshSphere(float radius, int rings, int slices)
         }
 
         par_shapes_free_mesh(sphere);
-
-        // Upload vertex data to GPU (static mesh)
-        UploadMesh(&mesh, false);
     }
     else TRACELOG(LOG_WARNING, "MESH: Failed to generate mesh: sphere");
 
     return mesh;
 }
 
+Mesh GenMeshSphere(float radius, int rings, int slices)
+{
+    
+    Mesh mesh = GenMeshSphereData(radius, rings, slices);
+    // Upload vertex data to GPU (static mesh)
+    UploadMesh(&mesh, false);
+    return mesh;
+}
+
 // Generate hemisphere mesh (half sphere, no bottom cap)
-Mesh GenMeshHemiSphere(float radius, int rings, int slices)
+Mesh GenMeshHemiSphereData(float radius, int rings, int slices)
 {
     Mesh mesh = { 0 };
 
@@ -2921,17 +3081,23 @@ Mesh GenMeshHemiSphere(float radius, int rings, int slices)
         }
 
         par_shapes_free_mesh(sphere);
-
-        // Upload vertex data to GPU (static mesh)
-        UploadMesh(&mesh, false);
     }
     else TRACELOG(LOG_WARNING, "MESH: Failed to generate mesh: hemisphere");
 
     return mesh;
 }
 
+Mesh GenMeshHemiSphere(float radius, int rings, int slices)
+{
+    Mesh mesh = GenMeshHemiSphereData(radius, rings, slices);
+    
+    // Upload vertex data to GPU (static mesh)
+    UploadMesh(&mesh, false);
+    return mesh;
+}
+
 // Generate cylinder mesh
-Mesh GenMeshCylinder(float radius, float height, int slices)
+Mesh GenMeshCylinderData(float radius, float height, int slices)
 {
     Mesh mesh = { 0 };
 
@@ -2985,17 +3151,22 @@ Mesh GenMeshCylinder(float radius, float height, int slices)
         }
 
         par_shapes_free_mesh(cylinder);
-
-        // Upload vertex data to GPU (static mesh)
-        UploadMesh(&mesh, false);
     }
     else TRACELOG(LOG_WARNING, "MESH: Failed to generate mesh: cylinder");
 
     return mesh;
 }
 
+Mesh GenMeshCylinder(float radius, float height, int slices)
+{
+    Mesh mesh = GenMeshCylinderData(radius, height, slices);
+    // Upload vertex data to GPU (static mesh)
+    UploadMesh(&mesh, false);
+    return mesh;
+}
+
 // Generate cone/pyramid mesh
-Mesh GenMeshCone(float radius, float height, int slices)
+Mesh GenMeshConeData(float radius, float height, int slices)
 {
     Mesh mesh = { 0 };
 
@@ -3040,17 +3211,22 @@ Mesh GenMeshCone(float radius, float height, int slices)
         }
 
         par_shapes_free_mesh(cone);
-
-        // Upload vertex data to GPU (static mesh)
-        UploadMesh(&mesh, false);
     }
     else TRACELOG(LOG_WARNING, "MESH: Failed to generate mesh: cone");
 
     return mesh;
 }
 
+Mesh GenMeshCone(float radius, float height, int slices)
+{
+    Mesh mesh = GenMeshConeData(radius, height, slices);
+    // Upload vertex data to GPU (static mesh)
+    UploadMesh(&mesh, false);
+    return mesh;
+}
+
 // Generate torus mesh
-Mesh GenMeshTorus(float radius, float size, int radSeg, int sides)
+Mesh GenMeshTorusData(float radius, float size, int radSeg, int sides)
 {
     Mesh mesh = { 0 };
 
@@ -3086,17 +3262,22 @@ Mesh GenMeshTorus(float radius, float size, int radSeg, int sides)
         }
 
         par_shapes_free_mesh(torus);
-
-        // Upload vertex data to GPU (static mesh)
-        UploadMesh(&mesh, false);
     }
     else TRACELOG(LOG_WARNING, "MESH: Failed to generate mesh: torus");
 
     return mesh;
 }
 
+Mesh GenMeshTorus(float radius, float size, int radSeg, int sides)
+{
+    Mesh mesh = GenMeshTorusData(radius, size, radSeg, sides);
+    // Upload vertex data to GPU (static mesh)
+    UploadMesh(&mesh, false);
+    return mesh;
+}
+
 // Generate trefoil knot mesh
-Mesh GenMeshKnot(float radius, float size, int radSeg, int sides)
+Mesh GenMeshKnotData(float radius, float size, int radSeg, int sides)
 {
     Mesh mesh = { 0 };
 
@@ -3130,18 +3311,24 @@ Mesh GenMeshKnot(float radius, float size, int radSeg, int sides)
         }
 
         par_shapes_free_mesh(knot);
-
-        // Upload vertex data to GPU (static mesh)
-        UploadMesh(&mesh, false);
     }
     else TRACELOG(LOG_WARNING, "MESH: Failed to generate mesh: knot");
 
     return mesh;
 }
 
+Mesh GenMeshKnot(float radius, float size, int radSeg, int sides)
+{
+    
+    Mesh mesh = GenMeshKnotData(radius, size, radSeg, sides);
+    // Upload vertex data to GPU (static mesh)
+    UploadMesh(&mesh, false);
+    return mesh;
+}
+
 // Generate a mesh from heightmap
 // NOTE: Vertex data is uploaded to GPU
-Mesh GenMeshHeightmap(Image heightmap, Vector3 size)
+Mesh GenMeshHeightmapData(Image heightmap, Vector3 size)
 {
     #define GRAY_VALUE(c) ((float)(c.r + c.g + c.b)/3.0f)
 
@@ -3265,15 +3452,21 @@ Mesh GenMeshHeightmap(Image heightmap, Vector3 size)
 
     UnloadImageColors(pixels);  // Unload pixels color data
 
+
+    return mesh;
+}
+
+Mesh GenMeshHeightmap(Image heightmap, Vector3 size)
+{
+    Mesh mesh = GenMeshHeightmapData(heightmap, size);
     // Upload vertex data to GPU (static mesh)
     UploadMesh(&mesh, false);
-
     return mesh;
 }
 
 // Generate a cubes mesh from pixel data
 // NOTE: Vertex data is uploaded to GPU
-Mesh GenMeshCubicmap(Image cubicmap, Vector3 cubeSize)
+Mesh GenMeshCubicmapData(Image cubicmap, Vector3 cubeSize)
 {
     #define COLOR_EQUAL(col1, col2) ((col1.r == col2.r)&&(col1.g == col2.g)&&(col1.b == col2.b)&&(col1.a == col2.a))
 
@@ -3613,11 +3806,18 @@ Mesh GenMeshCubicmap(Image cubicmap, Vector3 cubeSize)
 
     UnloadImageColors(pixels);   // Unload pixels color data
 
-    // Upload vertex data to GPU (static mesh)
-    UploadMesh(&mesh, false);
 
     return mesh;
 }
+
+Mesh GenMeshCubicmap(Image cubicmap, Vector3 cubeSize)
+{
+    Mesh mesh = GenMeshCubicmapData(cubicmap, cubeSize);
+    // Upload vertex data to GPU (static mesh)
+    UploadMesh(&mesh, false);
+    return mesh;
+}
+
 #endif      // SUPPORT_MESH_GENERATION
 
 // Compute mesh bounding box limits
