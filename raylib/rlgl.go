@@ -127,7 +127,7 @@ type RenderBatch struct {
 	VertexBuffer  *VertexBuffer
 	Draws         *DrawCall
 	DrawCounter   int32
-	DurrentDepth  float32
+	CurrentDepth  float32
 }
 
 // OpenGL version
